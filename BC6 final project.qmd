@@ -1,0 +1,320 @@
+---
+title: "American Time Use Analysis Through COVID-19"
+author: "Arhana Baijal, Yurui Sun, Lhotse Rowell"
+date: today
+format:
+  html:
+    theme: cyborg
+    embed-resources: true
+editor: visual
+---
+
+## **Topic Introduction**
+
+![Empty Times Square During COVID-19](BC6_final.jpeg)
+
+### Topical Overview
+
+The COVID-19 pandemic significantly changed Americans’ daily lives. Lockdowns, remote work policies, and social distancing measures transformed how Americans divided their time. In this project, we explore how the pandemic impacted Americans’ everyday routines.
+
+Our project focuses on the following three big-picture questions:
+
+**1. How did the COVID-19 pandemic change Americans’ work–leisure balance?**
+
+**2. To what extent did COVID-19 amplify existing inequalities in how different demographic groups spend their time?**
+
+**3. How did the pandemic change where and what people did for leisure?**
+
+During the pandemic, the U.S. labor market has experienced significant transformations, with many employees shifting to remote work. According to the Bureau of Labor Statistics([BLS](https://www.bls.gov/cps/effects-of-the-coronavirus-covid-19-pandemic.htm)), millions of Americans started working from home in 2020, fundamentally changing commuting times and work arrangements. Additionally, the pandemic has greatly affected social activities, travel, dining, and entertainment. Americans' daily lives and social interactions have changed dramatically during this period. These social changes are a key motivation for our study of shifts in time allocation.
+
+To answer the above questions, we used two publicly available datasets to analyze changes in American social behavior patterns before and after the pandemic, focusing on time use and spatial mobility.
+
+The first dataset is the American Time Use Survey([ATUS](https://www.bls.gov/tus/)), published by the U.S. Bureau of Labor Statistics, which tracks how American residents allocate their time in a day. By combining time-use data with demographic information, we can compare and analyze how people's time allocation has changed before and after the pandemic. The second dataset is the COVID-19 Community Mobility Reports ([Community Mobility](https://www.google.com/covid19/mobility/)), released by Google, which uses anonymized, aggregated data to show changes in visitor numbers across different types of venues. This dataset reflects shifts in people's living patterns after the pandemic and provides a basis for studying social mobility during this period. By combining these two datasets, we can analyze how the pandemic has reshaped American social life from both temporal and spatial perspectives.
+
+At the same time, we must consider the ethical issues and limitations of data use. Time-use data relies on self-reporting and may be affected by memory bias or reporting errors; meanwhile, mobility data are limited to users who have enabled location history and may not fully represent the entire population. Both datasets may lack adequate representation of certain disadvantaged groups; therefore, the conclusions of this study should be viewed in light of these constraints.
+
+### Data Context
+
+**American Time Use Survey**
+
+The *American Time Use Survey (ATUS)* is a yearly survey issued by the US Bureau of Labor Statistics, and is avaliable through [their website](https://www.bls.gov/tus/). For a more user friendly version of the data, we used [**IPMUS Time Use**](https://www.atusdata.org/atus/) to get our data set. This allowed us to save on download and proccessing time by creating a data extract with only the metrics we were interested in looking at. IPMUS is a trusted and publicly accessible worldwide collection of individual-level population census and survey data.
+
+ATUS survey methods are outlined extensively on the [BLS website](https://www.bls.gov/opub/hom/atus/home.htm). The survey is a stratified sample, taken from respondents of the Current Population Survey and further stratified by household resident demographics such as ethnicity, number of children, and adult-only households. Certain groups within these strata such as black, hispanic, and households with children are oversampled to ensure reliable measurments. From this, a random member of each household is chosen to respond for the entire house. These methods are quite rigorous, and paired with the very large sample size of nearly ten thousand samples per year and completeness of a majority of the responses, findings from this dataset can be fairly safely applied to the full American population. The ATUS has been running continuously since 2003, but we only used the years 2018 through 2023 in our investigation.
+
+**Google's COVID-19 Community Mobility Reports**
+
+This new dataset comes from the US region data in *Google's COVID-19 Community Mobility Reports*, available on the official website([Community Mobility](https://www.google.com/covid19/mobility/)). This dataset, collected and organized Google, comes from anonymized real-world user location history and tracks evolving trends in people's travel patterns to different types of locations during the COVID-19 pandemic. Google details the data collection sources, methods, privacy protection measures, and scope of use on its official website. The methodology is transparent, and the data are commonly used in academic research and public health studies. Considering this, we can safely conclude that this is a real dataset.
+
+The Community Mobility Report aims to provide insights into what changed in response to policies aimed at combating COVID-19. The data shows the percentage change in individual's travel amounts to different locations such as retail, parks, transit stations, workplaces, and residential areas. Percentages are calculated as the rate during the pandemic compared to the pre-pandemic baseline (positive numbers indicate an increase, and negative numbers indicate a decrease). This closely relates to the first dataset, which illustrates changes in "where people are active" from a spatial and locational perspective, whereas the ATUS data reflects "how and for how long people are active" from a time-allocation perspective. Combining both datasets allows us to analyze whether the shift in activity locations during the pandemic matches changes in how much time people spend on work, travel, social, and family activities, helping us understand the impact of COVID-19 on Americans' daily lives.
+
+## Loading Libraries & Datasets
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+
+atus_df <- read.csv("ATUS.csv")
+rm_df <- read.csv("Region_Mobility.csv")
+
+rm_df <- rm_df |>
+  mutate(
+    date = as.Date(date),
+    year = format(date, "%Y")
+  )
+
+yearly_rm <- rm_df |>
+  group_by(year) |>
+  summarise(
+      across(
+          contains("percent_change"),
+          \(x) mean(x, na.rm = TRUE)
+      )
+  )
+
+yearly_rm$year <- as.numeric(yearly_rm$year)
+atus_rm_df <- left_join(atus_df, yearly_rm, join_by("YEAR" == "year"))
+
+atus_summary <- atus_rm_df |>
+  summarize(
+    avg_retail_change = mean(retail_and_recreation_percent_change_from_baseline, na.rm = TRUE),
+    avg_park_change = mean(parks_percent_change_from_baseline, na.rm = TRUE),
+    avg_transit_change = mean(transit_stations_percent_change_from_baseline, na.rm = TRUE),
+    avg_workplace_change = mean(workplaces_percent_change_from_baseline, na.rm = TRUE),
+    avg_grocery_change = mean(grocery_and_pharmacy_percent_change_from_baseline, na.rm = TRUE),
+    avg_residential_change = mean(residential_percent_change_from_baseline, na.rm = TRUE)
+  )
+
+atus_rm_df <- atus_rm_df |>
+mutate(
+    leisure_time = ACT_SOCIAL + ACT_SPORTS + ACT_RELIG
+)
+
+glimpse(atus_rm_df)
+```
+
+## 3 questions with visualizations
+
+#### 1. How did the COVID-19 pandemic change Americans’ work–leisure balance?
+
+```{r}
+q1_df <- atus_rm_df |>
+  mutate(work_leisure = (ACT_WORK/(ACT_WORK + leisure_time)))
+
+wl_summary <- q1_df |>
+    group_by(YEAR) |>
+    summarise(
+        avg_work = mean(ACT_WORK, na.rm = TRUE),
+        avg_leisure = mean(leisure_time, na.rm = TRUE),
+        avg_ratio = mean(work_leisure, na.rm = TRUE)
+    )
+
+wl_line <- ggplot(wl_summary, aes(x = YEAR)) +
+  geom_line(aes(y = avg_work, color = "work time")) +
+  geom_line(aes(y = avg_leisure, color = "leisure time")) +
+  labs(title = "Average work and leisure time over time",
+      x = "Year",
+      y = "minutes per day")
+ggplotly(wl_line)
+
+wl_ratio <- ggplot(wl_summary, aes(x = YEAR)) +
+  geom_line(aes(y = avg_ratio)) +
+  labs(title = "Average work-Leisure ratio over time",
+      x = "Year",
+      y = "ratio")
+ggplotly(wl_ratio)
+```
+
+**Explanation:**
+
+As the graph illustrates, average working time dropped sharply in 2020, while leisure time increased notably, leading to a significant decrease in the work-leisure ratio, which reached its lowest point during the period. This indicates that work activity was suppressed in the early stages of the pandemic, providing people with more leisure time.
+
+By 2021, working time started to recover, and leisure time decreased accordingly, causing the ratio to rebound. This indicates a shift back towards work in the daily time structure. However, this recovery did not fully return to pre-pandemic levels, and the ratio stayed below the 2019 peak.
+
+In summary, the COVID-19 outbreak in 2020 greatly changed how Americans allocate their daily time, with subsequent years showing some recovery and establishing a new, relatively stable post-pandemic balance.
+
+```{r}
+q1_df <- atus_rm_df |>
+  filter(EMPSTAT %in% c("Employed - at work", "Employed - absent"))|>
+  mutate(period = ifelse(YEAR < 2020, "Pre-COVID", "COVID"))
+
+
+q1_box <- ggplot(q1_df, aes(x = period, y = ACT_WORK, fill = period)) +
+  geom_boxplot() +
+  labs(title = "work time before and during COVID",
+      x = "period",
+      y = "mintues per day") +
+  theme_minimal()
+ggplotly(q1_box)
+
+q1_box2 <- ggplot(q1_df, aes(x = period, y = leisure_time, fill = period)) +
+  geom_boxplot() +
+  labs(title = "leisure time before and during COVID",
+      x = "period",
+      y = "mintues per day") +
+  theme_minimal()
+ggplotly(q1_box2)
+```
+
+**Explanation:**
+
+The box plot indicates that working hours remained fairly consistent across both periods, with leisure time growing slightly during the pandemic, as indicated by increases in the median and the box plot position. These findings suggest that while Americans' working hours largely remained the same, their leisure time increased somewhat during the pandemic, resulting in a lower work-leisure ratio. This is probably due to less remote work and fewer commutes.
+
+#### 2. To what extent did COVID-19 amplify existing inequalities in how different demographic groups spend their time?
+
+```{r}
+q2_df <- atus_rm_df |>
+  mutate(covid_period = ifelse(YEAR < 2020, "Pre-COVID", "COVID"))
+
+gender_summary <- q2_df |>
+    group_by(covid_period, SEX) |>
+    summarise(
+        avg_work = mean(ACT_WORK, na.rm = TRUE),
+        avg_housework = mean(ACT_HHACT, na.rm = TRUE),
+        avg_social = mean(ACT_SOCIAL, na.rm = TRUE)
+    )
+
+gen_hw <- ggplot(gender_summary, aes(x = covid_period, y = avg_housework, fill = SEX)) +
+    geom_col(position = "dodge") +
+    labs(
+        title = "Average Household Work Time by Gender Before and During COVID",
+        x = "Time Period",
+        y = "Average Minutes per Day"
+    )
+ggplotly(gen_hw)
+
+gen_w <- ggplot(gender_summary, aes(x = covid_period, y = avg_work, fill = SEX)) +
+    geom_col(position = "dodge") +
+    labs(
+        title = "Average Work Time by Gender Before and During COVID",
+        x = "Time Period",
+        y = "Average Minutes per Day"
+    )
+ggplotly(gen_w)
+
+gen_s <- ggplot(gender_summary, aes(x = covid_period, y = avg_housework, fill = SEX)) +
+    geom_col(position = "dodge") +
+    labs(
+        title = "Average Social Time by Gender Before and During COVID",
+        x = "Time Period",
+        y = "Average Minutes per Day"
+    )
+ggplotly(gen_s)
+```
+
+**Explanation:**
+
+The gender graphs show clear differences in how men and women spend their time across work, social activities, and household tasks. Men consistently spend more time on paid work, while women spend significantly more time on household work and also slightly more time on social activities. During COVID, household work and social time increased while work time slightly decreased, but the overall gender patterns remained the same. This suggests that the pandemic did not eliminate existing gender differences in time use and may have continued to reinforce traditional gender roles in how labor and household responsibilities are divided.
+
+```{r}
+employment_summary <- q2_df |>
+    group_by(covid_period, EMPSTAT) |>
+    summarise(
+        avg_work = mean(ACT_WORK, na.rm = TRUE),
+        avg_social = mean(ACT_SOCIAL, na.rm = TRUE)
+    )
+
+employ_w <- ggplot(employment_summary, aes(x = covid_period, y = avg_work, fill = EMPSTAT)) +
+    geom_col(position = "dodge") +
+    labs(
+        title = "Work Time by Employment Status Before vs During COVID",
+        x = "Time Period",
+        y = "Average Minutes per Day"
+    )
+ggplotly(employ_w)
+
+employ_s <- ggplot(employment_summary, aes(x = covid_period, y = avg_social, fill = EMPSTAT)) +
+    geom_col(position = "dodge") +
+    labs(
+        title = "Social Time by Employment Status Before vs During COVID",
+        x = "Time Period",
+        y = "Average Minutes per Day"
+    )
+ggplotly(employ_s)
+```
+
+**Explanation:**
+
+These graphs show that employment status strongly affects how people spend their time. People who are employed and at work spend the most time working and have the least amount of social time, while those who are not in the labor force or unemployed have much more social time and very little work time. During COVID, work time for those employed slightly decreased and social time increased for some groups, especially those not in the labor force. This suggests that the pandemic changed how people in different employment groups allocated their time, reinforcing differences between those actively working and those who were not.
+
+#### 3. How the COVID-19 Pandemic changed where and what Americans did with their leisure time
+
+```{r}
+atus_leisure <- atus_rm_df |>
+    group_by(YEAR) |>
+    summarise(
+        social = mean(ACT_SOCIAL),
+        travel = mean(ACT_TRAVEL),
+        sports = mean(ACT_SPORTS)
+    ) 
+
+atus_mean_leisure <- atus_leisure |>
+    pivot_longer(
+        cols = c(social, travel, sports),
+        names_to = "activity",
+        values_to = "minutes"
+    )
+
+comp_leis <- ggplot(atus_mean_leisure, aes(x = YEAR, y = minutes, fill = activity)) +
+    geom_col(position = "stack") +
+    labs(
+        title = "Composition of Leisure Activities Over Time",
+        x = "Year",
+        y = "Duration (Minutes)"
+    )
+ggplotly(comp_leis)
+
+min_leis <- ggplot(atus_mean_leisure, aes(x = YEAR, y = minutes, fill = activity))+
+    geom_col(position = "dodge") +
+    labs(
+        title = "Minutes Spent on Leisure Activities",
+        x = "Year",
+        y = "Duration (Minutes)"
+    )
+ggplotly(min_leis)
+
+atus_leisure_diff <- atus_leisure |>
+    arrange(YEAR) |>
+    mutate(
+        social = social - lag(social),
+        travel = travel - lag(travel),
+        sports = sports - lag(sports)
+    ) |>
+    pivot_longer(
+        cols = c(social, travel, sports),
+        names_to = "activity",
+        values_to = "minutes"
+    )
+
+change_leis <- ggplot(atus_leisure_diff, aes(x = YEAR, y = minutes, fill = activity)) +
+    geom_col(position = "dodge") +
+    labs(
+        title = "Year-to-Year Change in Leisure Activities",
+        x = "Year",
+        y = "Change in Duration (Minutes)"
+    )
+ggplotly(change_leis)
+```
+
+**Explanation:**
+
+From these graphs, we can see a very clear change in every metric at the start of COVID-19, slowly evening back out by the present day. The composite leisure activities graph is somewhat interesting as it shows that cumulative leisure time in these three categories hardly changed at all. Most likely, this quirk stems from a lack of data as many different metrics were omitted from this analysis, but is still noteworthy as during the pandemic everyone was talking about the massive increase in free time they had. As expected, travel immediately saw a massive decrease as airports shut down worldwide. Sports saw a marginal increase, probably from their outside and small scale nature making them an easy passtime for people essentially on house arrest. Socializing and communication took a massive spike, mostly likely thanks to the communication part of that metric as people switch overwhelmingly to hybrid or remote interactions.
+
+## Conclusion
+
+| Research Question | Key Finding |
+|------------------------------------|------------------------------------|
+| Work–Leisure Balance | Work time dropped sharply in 2020 while leisure time increased, lowering the work–leisure ratio. |
+| Demographic Inequality | Gender and employment differences in time use remained consistent during COVID. |
+| Leisure Activities | Travel decreased significantly while other leisure activities shifted but gradually returned toward normal levels. |
+
+This project examined how the COVID-19 pandemic reshaped Americans’ daily routines using American Time Use Survey (ATUS) data combined with mobility trends. One major takeaway from the analysis is that the pandemic significantly altered the work–leisure balance. In 2020, average work time declined while leisure time increased, producing the lowest work-to-leisure ratio in the time period we studied. This reflects the major disruptions caused by lockdowns, workplace closures, and remote work transitions. Although work time began to recover in later years, it did not fully return to pre-pandemic levels by the end of the dataset, suggesting that Americans may have settled into a somewhat different long-term balance between work and personal time.
+
+A second takeaway is that the pandemic did not eliminate existing inequalities in how different demographic groups spend their time. Our analysis of gender differences shows that men consistently spend more time on paid work, while women spend substantially more time on household labor and slightly more time on social activities. Similarly, employment status plays a major role in time allocation. Individuals who are employed spend significantly more time working and less time socializing, while those unemployed or outside the labor force have much higher levels of social time. While COVID-19 slightly shifted these patterns—such as small decreases in work time or increases in social time—the overall structure of these differences remained largely unchanged. This suggests that the pandemic reinforced many existing patterns of inequality in time use rather than fundamentally reshaping them.
+
+The third major takeaway concerns how Americans changed their leisure activities and mobility during the pandemic. Travel activity dropped sharply at the start of COVID-19, reflecting reduced commuting, limited tourism, and widespread travel restrictions. At the same time, other leisure activities such as sports or social communication changed in different ways, likely reflecting the shift toward smaller-scale or remote forms of interaction. While the total amount of leisure time across the categories we analyzed remained relatively stable, the composition of leisure activities shifted during the early pandemic period before gradually returning toward earlier patterns. This suggests that Americans adapted their leisure behaviors in response to pandemic restrictions while still maintaining a similar overall amount of leisure time.
+
+There are also important limitations to consider when interpreting these findings. Because the ATUS relies on self-reported survey data, respondents may misremember or inaccurately report how they spent their time, which could slightly overestimate or underestimate certain activities. Additionally, the Google mobility data represents only individuals who have location services enabled on their devices, which may underrepresent certain demographic groups. As a result, our estimates of changes in travel or mobility behavior may not perfectly reflect the full U.S. population. Overall, however, the large sample size of the ATUS and the consistent measurement approach across years suggests that our results provide a reasonably unbiased picture of broad trends in American time use during the pandemic.
+
+Future research could build on this analysis by incorporating additional demographic variables such as income level, age groups, or household composition to better understand how different populations experienced changes in time use during COVID-19. It would also be valuable to extend the dataset to include more years after the pandemic in order to determine whether these shifts in work patterns and leisure behavior represent temporary adjustments or long-term changes in American lifestyles. Combining time-use data with additional sources such as labor market data or remote work statistics could further improve our understanding of how major disruptions reshape everyday routines.
